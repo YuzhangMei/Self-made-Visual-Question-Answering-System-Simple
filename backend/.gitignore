@@ -1,0 +1,27 @@
+# Environment variables
+.env
+backend/.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+venv/
+backend/venv/
+
+# Uploaded images
+backend/uploads/
+
+# Node / React
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
