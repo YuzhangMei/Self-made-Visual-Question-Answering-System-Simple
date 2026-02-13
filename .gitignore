@@ -10,6 +10,8 @@ venv/
 
 # --- Backend uploads ---
 backend/uploads/
+backend/.env
+backend/env
 
 # --- Node/React ---
 frontend/node_modules/
