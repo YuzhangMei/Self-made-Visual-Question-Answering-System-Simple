@@ -153,7 +153,7 @@ function App() {
         <form onSubmit={handleSubmit}>
           <input
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             onChange={(e) => {
               setImageFile(e.target.files[0]);
               setSessionId(null);

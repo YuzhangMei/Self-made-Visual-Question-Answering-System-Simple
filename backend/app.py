@@ -1,6 +1,8 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
+from video_processor import extract_frames
+from temporal_aggregator import aggregate_temporal_objects
 import os
 import uuid
 import hashlib
@@ -24,7 +26,7 @@ BASE_DIR = os.path.dirname(__file__)
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".mov"}
 EXT_TO_MIME = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -36,6 +38,50 @@ EXT_TO_MIME = {
 
 def compute_image_signature(image_bytes: bytes) -> str:
     return hashlib.sha1(image_bytes).hexdigest()
+
+
+def analyze_video(video_path, question, mode):
+
+    with open(video_path, "rb") as f:
+        video_bytes = f.read()
+
+    frames = extract_frames(video_bytes)
+
+    frame_results = []
+
+    for frame_bytes, timestamp in frames:
+        parsed = analyze_image_to_objects(
+            image_bytes=frame_bytes,
+            mime_type="image/jpeg",
+            question=question,
+        )
+        objects = parsed.get("objects", [])
+        frame_results.append((timestamp, objects))
+
+    temporal_objects = aggregate_temporal_objects(frame_results)
+
+    # simple ambiguity
+    ambiguity = {
+        "is_ambiguous": len(temporal_objects) > 1,
+        "reasons": ["Objects appear across multiple time points"],
+    }
+
+    answer_lines = []
+
+    for obj in temporal_objects:
+        answer_lines.append(
+            f"{obj['name']} appears from {obj['first_seen']} to {obj['last_seen']}."
+        )
+
+    answer = "\n".join(answer_lines)
+
+    return jsonify({
+        "ok": True,
+        "mode": "video",
+        "answer": answer,
+        "temporal_objects": temporal_objects,
+        "ambiguity": ambiguity
+    })
 
 
 @app.route("/")
@@ -67,6 +113,8 @@ def analyze():
     saved_name = f"{uuid.uuid4().hex}{ext}"
     saved_path = os.path.join(UPLOAD_DIR, saved_name)
     image.save(saved_path)
+    if ext in [".mp4", ".mov"]:
+        return analyze_video(saved_path, question, mode)
 
     with open(saved_path, "rb") as f:
         image_bytes = f.read()
