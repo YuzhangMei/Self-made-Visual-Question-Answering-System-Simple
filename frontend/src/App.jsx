@@ -5,117 +5,125 @@ function App() {
   const [question, setQuestion] = useState("");
   const [mode, setMode] = useState("onepass");
   const [result, setResult] = useState(null);
+  const [clarification, setClarification] = useState(null);
+  const [sessionId, setSessionId] = useState(null);
   const [loading, setLoading] = useState(false);
-
 
   async function handleSubmit(e) {
     e.preventDefault();
 
-    if (!imageFile) {
-      alert("Please choose an image first.");
-      return;
-    }
-    if (!question.trim()) {
-      alert("Please type a question.");
+    if (!imageFile || !question.trim()) {
+      alert("Please upload an image and enter a question.");
       return;
     }
 
     setLoading(true);
     setResult(null);
+    setClarification(null);
+    setSessionId(null);
 
-    try {
-      const formData = new FormData();
-      formData.append("image", imageFile);
-      formData.append("question", question);
-      formData.append("mode", mode);
+    const formData = new FormData();
+    formData.append("image", imageFile);
+    formData.append("question", question);
+    formData.append("mode", mode);
 
-      const res = await fetch("http://localhost:5000/analyze", {
-        method: "POST",
-        body: formData,
-      });
+    const res = await fetch("http://localhost:5000/analyze", {
+      method: "POST",
+      body: formData,
+    });
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Backend error (${res.status}): ${text}`)
-      }
+    const data = await res.json();
+    setLoading(false);
 
-      const data = await res.json();
-      setResult(data);
-    } catch (err) {
-      console.error(err);
-      alert(err.message);
-    } finally {
-      setLoading(false);
+    if (mode === "clarify" && data.clarification) {
+      setClarification(data.clarification);
+      setSessionId(data.session_id);
+    } else {
+      setResult(data.answer);
     }
   }
 
+  async function handleClarifySelection(option) {
+    setLoading(true);
+
+    const res = await fetch("http://localhost:5000/clarify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        selection: option,
+      }),
+    });
+
+    const data = await res.json();
+    setLoading(false);
+
+    setClarification(null);
+    setResult(data.answer);
+  }
+
   return (
-    <div style={{ padding: 40, maxWidth: 900 }}>
-      <h1>Project 11 – Phase 1 (Step 2)</h1>
-      <p>Upload an image, ask a question, and send it to the Flask backend.</p>
+    <div style={{ padding: 40, maxWidth: 800 }}>
+      <h1>Ambiguity-Aware VQA</h1>
 
-      <form onSubmit={handleSubmit} style={{ display: "grid", gap: 12 }}>
-        <label>
-          <div style={{ fontWeight: 600 }}>Image</div>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-            aria-label="Upload an image"
-          />
-        </label>
+      <form onSubmit={handleSubmit} style={{ marginBottom: 20 }}>
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setImageFile(e.target.files[0])}
+          aria-label="Upload image"
+        />
+        <br /><br />
 
-        <label>
-          <div style={{ fontWeight: 600 }}>Question</div>
-          <input
-            type="text"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder='e.g., "What is on the table?"'
-            style={{ width: "100%", padding: 8 }}
-            aria-label="Type your question"
-          />
-        </label>
+        <input
+          type="text"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Ask a question..."
+          style={{ width: "100%", padding: 8 }}
+          aria-label="Question input"
+        />
+        <br /><br />
 
-        <label>
-          <div style={{ fontWeight: 600 }}>Mode</div>
-          <select
-            value={mode}
-            onChange={(e) => setMode(e.target.value)}
-            style={{ padding: 8, width: 260 }}
-            aria-label="Choose mode"
-          >
-            <option value="onepass">One-pass exhaustive response</option>
-            <option value="clarify">Multi-turn clarification</option>
-          </select>
-        </label>
+        <select value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="onepass">One-pass</option>
+          <option value="clarify">Clarify</option>
+        </select>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{ padding: 10, width: 220 }}
-          aria-label="Submit"
-        >
-          {loading ? "Sending..." : "Analyze"}
+        <button type="submit" style={{ marginLeft: 10 }}>
+          {loading ? "Processing..." : "Submit"}
         </button>
       </form>
 
-      <hr style={{ margin: "24px 0" }} />
+      {/* Clarification Section */}
+      {clarification && (
+        <div>
+          <h3>{clarification.question}</h3>
+          {clarification.options.map((option, index) => (
+            <button
+              key={index}
+              onClick={() => handleClarifySelection(option)}
+              style={{
+                display: "block",
+                margin: "10px 0",
+                padding: "10px",
+              }}
+              aria-label={`Select option ${option}`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
 
-      <h2>Backend Response (JSON)</h2>
-      {result ? (
-        <pre
-          style={{
-            background: "#f6f8fa",
-            padding: 16,
-            borderRadius: 8,
-            overflowX: "auto",
-          }}
-        >
-          {JSON.stringify(result, null, 2)}
-        </pre>
-      ) : (
-        <p style={{ opacity: 0.7 }}>No result yet.</p>
+      {/* Final Answer */}
+      {result && (
+        <div style={{ marginTop: 20 }}>
+          <h2>Answer:</h2>
+          <p>{result}</p>
+        </div>
       )}
     </div>
   );
