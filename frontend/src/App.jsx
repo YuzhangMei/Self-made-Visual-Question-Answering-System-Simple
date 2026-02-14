@@ -8,8 +8,71 @@ function App() {
   const [clarification, setClarification] = useState(null);
   const [sessionId, setSessionId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [listening, setListening] = useState(false);
 
   const optionRefs = useRef([]);
+  const recognitionRef = useRef(null);
+
+  // ==========================
+  // 🎙 Speech-to-Text
+  // ==========================
+
+  function startListening() {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Speech recognition not supported in this browser.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setListening(true);
+    };
+
+    recognition.onend = () => {
+      setListening(false);
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setQuestion(transcript);
+    };
+
+    recognition.start();
+    recognitionRef.current = recognition;
+  }
+
+  // ==========================
+  // 🔊 Text-to-Speech
+  // ==========================
+
+  function speak(text) {
+    if (!window.speechSynthesis) return;
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.lang = "en-US";
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  // 当有新答案时自动朗读
+  useEffect(() => {
+    if (result) {
+      speak(result);
+    }
+  }, [result]);
+
+  // ==========================
+  // Submit
+  // ==========================
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -39,6 +102,7 @@ function App() {
     if (mode === "clarify" && data.clarification) {
       setClarification(data.clarification);
       setSessionId(data.session_id);
+      speak(data.clarification.question);
     } else {
       setResult(data.answer);
     }
@@ -63,40 +127,22 @@ function App() {
     setResult(data.answer);
   }
 
-  // 🔥 自动把焦点移动到第一个 option
+  // Focus first clarify option
   useEffect(() => {
     if (clarification && optionRefs.current[0]) {
       optionRefs.current[0].focus();
     }
   }, [clarification]);
 
-  // 🔥 Arrow key navigation
-  function handleKeyNavigation(e, index) {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      const next = (index + 1) % clarification.options.length;
-      optionRefs.current[next].focus();
-    }
-
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      const prev =
-        (index - 1 + clarification.options.length) %
-        clarification.options.length;
-      optionRefs.current[prev].focus();
-    }
-  }
-
   return (
     <div style={{ padding: 40, maxWidth: 800 }}>
-      <h1>Ambiguity-Aware VQA</h1>
+      <h1>Ambiguity-Aware VQA (Voice Enabled)</h1>
 
       <form onSubmit={handleSubmit}>
         <input
           type="file"
           accept="image/*"
           onChange={(e) => setImageFile(e.target.files[0])}
-          tabIndex="0"
           aria-label="Upload image"
         />
         <br /><br />
@@ -106,34 +152,37 @@ function App() {
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="Ask a question..."
-          tabIndex="0"
-          aria-label="Question input"
           style={{ width: "100%", padding: 8 }}
+          aria-label="Question input"
         />
+
+        <button
+          type="button"
+          onClick={startListening}
+          style={{ marginLeft: 10 }}
+          aria-label="Start voice input"
+        >
+          🎙 {listening ? "Listening..." : "Speak"}
+        </button>
+
         <br /><br />
 
         <select
           value={mode}
           onChange={(e) => setMode(e.target.value)}
-          tabIndex="0"
-          aria-label="Mode selection"
         >
           <option value="onepass">One-pass</option>
           <option value="clarify">Clarify</option>
         </select>
 
-        <button type="submit" tabIndex="0">
+        <button type="submit" style={{ marginLeft: 10 }}>
           {loading ? "Processing..." : "Submit"}
         </button>
       </form>
 
-      {/* Clarification Section */}
+      {/* Clarification */}
       {clarification && (
-        <div
-          role="region"
-          aria-live="polite"
-          style={{ marginTop: 20 }}
-        >
+        <div style={{ marginTop: 20 }}>
           <h3>{clarification.question}</h3>
 
           {clarification.options.map((option, index) => (
@@ -141,14 +190,11 @@ function App() {
               key={index}
               ref={(el) => (optionRefs.current[index] = el)}
               onClick={() => handleClarifySelection(option)}
-              onKeyDown={(e) => handleKeyNavigation(e, index)}
-              tabIndex="0"
               style={{
                 display: "block",
                 margin: "10px 0",
                 padding: "10px",
               }}
-              aria-label={`Select option ${option}`}
             >
               {option}
             </button>
@@ -158,7 +204,7 @@ function App() {
 
       {/* Final Answer */}
       {result && (
-        <div role="region" aria-live="polite" style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 20 }}>
           <h2>Answer:</h2>
           <p>{result}</p>
         </div>
