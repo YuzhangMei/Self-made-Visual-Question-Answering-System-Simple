@@ -101,6 +101,9 @@ def detect_ambiguity(question: str, objects: List[Dict[str, Any]]) -> Dict[str, 
 
     for name, k in multi_same_type:
         reasons.append(f"multiple_objects_same_type: {name}({k})")
+    
+    # Step 12 补充
+    multi_object_groups = {name: k for name, k in multi_same_type}
 
     # 3) 轻量判断“问题是否更像在指代某个具体对象”
     #    这是为了减少误报：比如问 "How many cups are there?" 就不该要求澄清哪个杯子
@@ -141,4 +144,5 @@ def detect_ambiguity(question: str, objects: List[Dict[str, Any]]) -> Dict[str, 
         "reasons": reasons,
         "clarifying_question": clarifying_question,
         "options": options,
+        "multi_object_groups": multi_object_groups,
     }
