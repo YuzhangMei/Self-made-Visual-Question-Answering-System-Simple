@@ -1,11 +1,15 @@
+import os
+import uuid
+import hashlib
+
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from video_processor import extract_frames
 from temporal_aggregator import aggregate_temporal_objects
-import os
-import uuid
-import hashlib
+from temporal_ambiguity import detect_temporal_ambiguity
+
 
 from openai_vision import analyze_image_to_objects
 from ambiguity import detect_ambiguity
@@ -41,12 +45,33 @@ def compute_image_signature(image_bytes: bytes) -> str:
 
 
 def analyze_video(video_path, question, mode):
+    """
+    Handle video input:
+    - Extract frames
+    - Analyze each frame with vision model
+    - Aggregate temporal objects
+    - Support onepass and clarify modes
+    """
 
+    # -----------------------
+    # 1️⃣ Load video bytes
+    # -----------------------
     with open(video_path, "rb") as f:
         video_bytes = f.read()
 
+    # -----------------------
+    # 2️⃣ Extract frames
+    # -----------------------
     frames = extract_frames(video_bytes)
 
+    if not frames:
+        return jsonify({
+            "error": "Could not extract frames from video."
+        }), 400
+
+    # -----------------------
+    # 3️⃣ Analyze each frame
+    # -----------------------
     frame_results = []
 
     for frame_bytes, timestamp in frames:
@@ -55,30 +80,96 @@ def analyze_video(video_path, question, mode):
             mime_type="image/jpeg",
             question=question,
         )
+
         objects = parsed.get("objects", [])
         frame_results.append((timestamp, objects))
 
+    # -----------------------
+    # 4️⃣ Temporal aggregation
+    # -----------------------
     temporal_objects = aggregate_temporal_objects(frame_results)
 
-    # simple ambiguity
-    ambiguity = {
-        "is_ambiguous": len(temporal_objects) > 1,
-        "reasons": ["Objects appear across multiple time points"],
-    }
+    if not temporal_objects:
+        return jsonify({
+            "ok": True,
+            "mode": "video",
+            "answer": "No salient objects detected in the video."
+        })
 
+    # -----------------------
+    # 5️⃣ Detect temporal ambiguity
+    # -----------------------
+    ambiguity = detect_temporal_ambiguity(question, temporal_objects)
+
+    # ============================================================
+    # 🔵 CLARIFY MODE
+    # ============================================================
+    if mode == "clarify":
+
+        if ambiguity.get("is_ambiguous"):
+
+            session_id = create_session({
+                "objects": temporal_objects,
+                "question": question,
+                "type": "video",
+            })
+
+            append_history(session_id, "user", question)
+            append_history(session_id, "assistant", ambiguity["clarifying_question"])
+
+            return jsonify({
+                "ok": True,
+                "mode": "clarify",
+                "session_id": session_id,
+                "clarification": {
+                    "question": ambiguity["clarifying_question"],
+                    "options": ambiguity["options"],
+                }
+            })
+
+        else:
+            # No ambiguity → directly answer
+            selected_object = temporal_objects[0]
+
+            answer = generate_natural_answer(
+                question=question,
+                selected_object=selected_object,
+                all_objects=temporal_objects,
+                temporal=True
+            )
+
+            return jsonify({
+                "ok": True,
+                "mode": "video",
+                "answer": answer
+            })
+
+    # ============================================================
+    # 🟢 ONEPASS MODE
+    # ============================================================
     answer_lines = []
 
     for obj in temporal_objects:
-        answer_lines.append(
-            f"{obj['name']} appears from {obj['first_seen']} to {obj['last_seen']}."
-        )
+        first = obj["first_seen"]
+        last = obj["last_seen"]
+        name = obj["name"]
 
-    answer = "\n".join(answer_lines)
+        if first == last:
+            line = f"{name} appears at {first}."
+        else:
+            line = f"{name} appears from {first} to {last}."
+
+        answer_lines.append(line)
+
+    answer_lines.append("")
+    answer_lines.append(
+        "Note: appearance times are based on sampled key frames."
+    )
 
     return jsonify({
         "ok": True,
         "mode": "video",
-        "answer": answer,
+        "answer": "\n".join(answer_lines),
         "temporal_objects": temporal_objects,
         "ambiguity": ambiguity
     })
@@ -151,6 +242,7 @@ def analyze():
                 "objects": objects,
                 "question": question,
                 "image_signature": image_sig,
+                "type": "image"
             })
 
             append_history(session_id, "user", question)
@@ -189,48 +281,147 @@ def analyze():
 # ==========================
 @app.route("/clarify", methods=["POST"])
 def clarify():
-    data = request.json
+    data = request.json or {}
     session_id = data.get("session_id")
-    selection = data.get("selection")
+    selection = (data.get("selection") or "").strip()
+
+    if not session_id or not selection:
+        return jsonify({"error": "Missing session_id or selection"}), 400
 
     session = get_session(session_id)
     if not session:
         return jsonify({"error": "Session expired or invalid"}), 400
 
     objects = session.get("objects", [])
-    question = session.get("question")
+    question = session.get("question", "")
+    session_type = session.get("type", "image")  # "image" or "video"
+
+    if not objects:
+        return jsonify({"error": "Session has no objects"}), 400
 
     selected_object = None
-    for obj in objects:
-        label = f"{obj.get('name')} #{obj.get('id')}"
-        if label in selection:
-            selected_object = obj
-            break
 
-    if not selected_object:
+    # =========================================================
+    # 1) IMAGE SESSION MATCHING (name #id) + fallback by name
+    # =========================================================
+    if session_type == "image":
+        # (a) Try match by "name #id"
         for obj in objects:
-            if obj.get("name", "").lower() in selection.lower():
+            obj_name = str(obj.get("name", "")).strip()
+            obj_id = obj.get("id", None)
+            label = f"{obj_name} #{obj_id}"
+            if obj_name and obj_id is not None and label in selection:
                 selected_object = obj
                 break
+
+        # (b) Fallback: match by object name substring
+        if not selected_object:
+            sel_lower = selection.lower()
+            for obj in objects:
+                obj_name = str(obj.get("name", "")).lower()
+                if obj_name and obj_name in sel_lower:
+                    selected_object = obj
+                    break
+
+        # (c) Final fallback: if only one object, pick it
+        if not selected_object and len(objects) == 1:
+            selected_object = objects[0]
+
+    # =========================================================
+    # 2) VIDEO SESSION MATCHING (temporal option strings)
+    # objects are temporal_objects: {name, first_seen, last_seen, ...}
+    # =========================================================
+    else:
+        sel_lower = selection.lower()
+
+        # (a) Prefer exact match with the option format
+        # options like: "vase (0.0s–4.77s)" or "vase at 1.17s"
+        for obj in objects:
+            name = str(obj.get("name", "")).strip()
+            first = str(obj.get("first_seen", "")).strip()
+            last = str(obj.get("last_seen", "")).strip()
+            if not name:
+                continue
+
+            if first and last and first != last:
+                option_label = f"{name} ({first}–{last})".lower()
+            elif first:
+                option_label = f"{name} at {first}".lower()
+            else:
+                option_label = name.lower()
+
+            if option_label == sel_lower:
+                selected_object = obj
+                break
+
+        # (b) Fallback: match by name substring
+        if not selected_object:
+            for obj in objects:
+                name = str(obj.get("name", "")).lower()
+                if name and name in sel_lower:
+                    selected_object = obj
+                    break
+
+        # (c) Final fallback: if only one object, pick it
+        if not selected_object and len(objects) == 1:
+            selected_object = objects[0]
 
     if not selected_object:
         return jsonify({"error": "Could not match selection"}), 400
 
+    # =========================================================
+    # 3) Set focus + record history
+    # =========================================================
     set_focus_object(session_id, selected_object)
+    append_history(session_id, "user", f"[selection] {selection}")
 
-    answer = generate_natural_answer(
-        question=question,
-        selected_object=selected_object,
-        all_objects=objects
-    )
+    # =========================================================
+    # 4) Generate answer (temporal sessions include time context)
+    # =========================================================
+    try:
+        if session_type == "video":
+            # Make time context explicit so LLM uses it
+            first = selected_object.get("first_seen", "")
+            last = selected_object.get("last_seen", "")
+            name = selected_object.get("name", "object")
+
+            temporal_context = f"The selected object is '{name}'. "
+            if first and last and first != last:
+                temporal_context += f"It appears from {first} to {last} in the video."
+            elif first:
+                temporal_context += f"It appears at {first} in the video."
+
+            llm_question = (
+                f"{question}\n\n"
+                f"{temporal_context}\n"
+                f"Answer the user's question with this time information in mind."
+            )
+
+            answer = generate_natural_answer(
+                question=llm_question,
+                selected_object=selected_object,
+                all_objects=objects,
+                temporal=True
+            )
+        else:
+            answer = generate_natural_answer(
+                question=question,
+                selected_object=selected_object,
+                all_objects=objects,
+            )
+
+    except Exception as e:
+        return jsonify({"error": f"LLM answer generation failed: {str(e)}"}), 500
 
     append_history(session_id, "assistant", answer)
 
     return jsonify({
         "ok": True,
         "answer": answer,
-        "focus_ready": True
+        "focus_ready": True,
+        "session_type": session_type
     })
+
 
 
 # ==========================
@@ -252,12 +443,15 @@ def chat():
 
     objects = session.get("objects", [])
 
+    session_type = session.get("type", "image")
+
     append_history(session_id, "user", user_text)
 
     answer = generate_natural_answer(
         question=user_text,
         selected_object=focus,
-        all_objects=objects
+        all_objects=objects,
+        temporal=(session_type == "video")
     )
 
     append_history(session_id, "assistant", answer)
