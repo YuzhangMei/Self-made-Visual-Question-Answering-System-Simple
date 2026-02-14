@@ -9,76 +9,72 @@ function App() {
   const [sessionId, setSessionId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
+  const [liveMessage, setLiveMessage] = useState("");
 
   const optionRefs = useRef([]);
-  const recognitionRef = useRef(null);
 
   // ==========================
-  // 🎙 Speech-to-Text
+  // Speech-to-text
   // ==========================
-
   function startListening() {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert("Speech recognition not supported in this browser.");
+      alert("Speech recognition not supported.");
       return;
     }
 
     const recognition = new SpeechRecognition();
     recognition.lang = "en-US";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
       setListening(true);
+      setLiveMessage("Voice input started.");
     };
 
     recognition.onend = () => {
       setListening(false);
+      setLiveMessage("Voice input stopped.");
     };
 
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       setQuestion(transcript);
+      setLiveMessage("Question updated from voice input.");
     };
 
     recognition.start();
-    recognitionRef.current = recognition;
   }
 
   // ==========================
-  // 🔊 Text-to-Speech
+  // Text-to-speech
   // ==========================
-
   function speak(text) {
     if (!window.speechSynthesis) return;
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    utterance.lang = "en-US";
+    window.speechSynthesis.cancel();
 
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
     window.speechSynthesis.speak(utterance);
   }
 
-  // 当有新答案时自动朗读
   useEffect(() => {
     if (result) {
       speak(result);
+      setLiveMessage("Answer generated and spoken.");
     }
   }, [result]);
 
   // ==========================
   // Submit
   // ==========================
-
   async function handleSubmit(e) {
     e.preventDefault();
 
     if (!imageFile || !question.trim()) {
-      alert("Please upload image and question.");
+      setLiveMessage("Please upload image and enter question.");
       return;
     }
 
@@ -103,6 +99,7 @@ function App() {
       setClarification(data.clarification);
       setSessionId(data.session_id);
       speak(data.clarification.question);
+      setLiveMessage("Clarification required.");
     } else {
       setResult(data.answer);
     }
@@ -127,74 +124,68 @@ function App() {
     setResult(data.answer);
   }
 
-  // Focus first clarify option
-  useEffect(() => {
-    if (clarification && optionRefs.current[0]) {
-      optionRefs.current[0].focus();
-    }
-  }, [clarification]);
-
   return (
     <div style={{ padding: 40, maxWidth: 800 }}>
-      <h1>Ambiguity-Aware VQA (Voice Enabled)</h1>
+      <h1>Accessible Ambiguity-Aware VQA</h1>
 
       <form onSubmit={handleSubmit}>
+
+        <label htmlFor="imageUpload">Upload Image</label><br />
         <input
+          id="imageUpload"
           type="file"
           accept="image/*"
           onChange={(e) => setImageFile(e.target.files[0])}
-          aria-label="Upload image"
         />
         <br /><br />
 
+        <label htmlFor="questionInput">Ask a Question</label><br />
         <input
+          id="questionInput"
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Ask a question..."
           style={{ width: "100%", padding: 8 }}
-          aria-label="Question input"
         />
 
         <button
           type="button"
           onClick={startListening}
-          style={{ marginLeft: 10 }}
+          aria-pressed={listening}
           aria-label="Start voice input"
+          style={{ marginLeft: 10 }}
         >
-          🎙 {listening ? "Listening..." : "Speak"}
+          {listening ? "Listening..." : "Speak"}
         </button>
 
         <br /><br />
 
-        <select
-          value={mode}
-          onChange={(e) => setMode(e.target.value)}
-        >
-          <option value="onepass">One-pass</option>
-          <option value="clarify">Clarify</option>
-        </select>
+        <fieldset>
+          <legend>Select Mode</legend>
+          <select
+            value={mode}
+            onChange={(e) => setMode(e.target.value)}
+          >
+            <option value="onepass">One-pass</option>
+            <option value="clarify">Clarify</option>
+          </select>
+        </fieldset>
 
-        <button type="submit" style={{ marginLeft: 10 }}>
+        <button type="submit">
           {loading ? "Processing..." : "Submit"}
         </button>
       </form>
 
       {/* Clarification */}
       {clarification && (
-        <div style={{ marginTop: 20 }}>
-          <h3>{clarification.question}</h3>
+        <div role="alert" aria-live="assertive" style={{ marginTop: 20 }}>
+          <h2>{clarification.question}</h2>
 
           {clarification.options.map((option, index) => (
             <button
               key={index}
-              ref={(el) => (optionRefs.current[index] = el)}
               onClick={() => handleClarifySelection(option)}
-              style={{
-                display: "block",
-                margin: "10px 0",
-                padding: "10px",
-              }}
+              style={{ display: "block", margin: "10px 0" }}
             >
               {option}
             </button>
@@ -204,11 +195,25 @@ function App() {
 
       {/* Final Answer */}
       {result && (
-        <div style={{ marginTop: 20 }}>
-          <h2>Answer:</h2>
+        <div role="region" aria-live="polite" style={{ marginTop: 20 }}>
+          <h2>Answer</h2>
           <p>{result}</p>
         </div>
       )}
+
+      {/* Visually Hidden Live Region */}
+      <div
+        aria-live="polite"
+        style={{
+          position: "absolute",
+          left: "-10000px",
+          width: "1px",
+          height: "1px",
+          overflow: "hidden"
+        }}
+      >
+        {liveMessage}
+      </div>
     </div>
   );
 }
