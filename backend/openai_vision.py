@@ -83,7 +83,6 @@ Task:
     )
 
     content = resp.choices[0].message.content
-    # content should be valid JSON due to JSON mode
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError as e:

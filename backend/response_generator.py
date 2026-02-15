@@ -61,7 +61,7 @@ def format_grouped_description(groups: Dict[str, List[Dict[str, Any]]]) -> str:
             else:
                 lines.append("- (no additional details)")
 
-        lines.append("")  # blank line between groups
+        lines.append("")
 
     return "\n".join(lines).strip()
 
@@ -86,13 +86,10 @@ def generate_onepass_response(objects: List[Dict[str, Any]], ambiguity: Dict[str
         # If we have multi-object group info, mention it explicitly
         multi_groups = ambiguity.get("multi_object_groups", {})
         if multi_groups:
-            # e.g., "multiple cups (2), multiple books (5)"
             parts = []
             for k, v in sorted(multi_groups.items(), key=lambda x: (-x[1], x[0])):
                 parts.append(f"multiple {k}s ({v})")
             prefix_lines.append("Specifically, I see " + ", ".join(parts) + ".")
-        #elif reasons:
-        #    prefix_lines.append("Reason: " + ", ".join(reasons) + ".")
         prefix_lines.append("Here is a complete grouped description:")
 
     if prefix_lines:
@@ -141,7 +138,7 @@ def generate_final_answer_grouped(
     if ambiguity and ambiguity.get("is_ambiguous"):
         answer = "Ambiguity resolved. " + answer
 
-    # Add short grouped context (optional but nice)
+    # Add short grouped context
     groups = group_objects(all_objects)
     summary = []
     for gname, objs in sorted(groups.items(), key=lambda x: (-len(x[1]), x[0])):

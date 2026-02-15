@@ -22,9 +22,7 @@ def generate_natural_answer(
     if not selected_object:
         return "I could not determine the selected object."
 
-    # ==========================
-    # STATIC OBJECT CONTEXT
-    # ==========================
+    # Static object context
     if not temporal:
 
         name = selected_object.get("name", "object")
@@ -49,15 +47,11 @@ If the question is a follow-up (e.g., "What color is it?"),
 refer to the selected object.
 """
 
-    # ==========================
-    # TEMPORAL OBJECT CONTEXT
-    # ==========================
+    # Temporal object context
     else:
-
         name = selected_object.get("name", "object")
         first_seen = selected_object.get("first_seen", "unknown")
         last_seen = selected_object.get("last_seen", "unknown")
-
         context = f"""
 You are answering a question about an object detected in a video.
 
@@ -74,10 +68,7 @@ If the question refers to timing (e.g., when did it appear?),
 use the first_seen and last_seen information.
 """
 
-    # ==========================
     # Construct prompt
-    # ==========================
-
     prompt = f"""
 {context}
 
@@ -88,10 +79,7 @@ Provide a helpful and natural response.
 Do not invent objects not in the context.
 """
 
-    # ==========================
-    # Call OpenAI
-    # ==========================
-
+    # Call AI model
     try:
         response = client.chat.completions.create(
             model=DEFAULT_MODEL,
@@ -103,6 +91,5 @@ Do not invent objects not in the context.
         )
 
         return response.choices[0].message.content.strip()
-
     except Exception as e:
         return f"Error generating answer: {str(e)}"

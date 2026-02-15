@@ -2,7 +2,7 @@ import re
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple
 
-# 一些简单的“指代/含糊”关键词（可逐步扩展）
+# Simple pronouns (to be extended)
 PRONOUN_PATTERNS = [
     r"\bit\b",
     r"\bthis\b",
@@ -17,7 +17,8 @@ PRONOUN_PATTERNS = [
     r"\bthat one\b",
 ]
 
-# 可选：如果问题里出现这些词，我们更倾向于认为用户在问“某个具体对象/位置”
+# If the words below exist in the question, we tend to believe that
+# the user is asking for a specific object.
 REFERENTIAL_HINTS = [
     r"\bwhich\b",
     r"\bwhere\b",
@@ -44,7 +45,6 @@ def _has_any_pattern(text: str, patterns: List[str]) -> bool:
 def _summarize_obj(obj: Dict[str, Any], idx_fallback: int) -> str:
     """
     Produce a short human-readable label for clarifying options.
-    Example: "cup #2 (blue, right)"
     """
     obj_id = obj.get("id", idx_fallback)
     name = obj.get("name", "object")
@@ -87,12 +87,12 @@ def detect_ambiguity(question: str, objects: List[Dict[str, Any]]) -> Dict[str, 
     options: List[str] = []
     clarifying_question = None
 
-    # 1) 指代词 / 含糊指代
+    # Pronouns
     has_pronoun = _has_any_pattern(q, PRONOUN_PATTERNS)
     if has_pronoun:
         reasons.append("pronoun_reference")
 
-    # 2) 多个同类对象（cup(2), bottle(3), ...）
+    # Multiple objects within the same class
     groups = _group_by_name(objects)
     multi_same_type: List[Tuple[str, int]] = []
     for name, objs in groups.items():
@@ -101,41 +101,36 @@ def detect_ambiguity(question: str, objects: List[Dict[str, Any]]) -> Dict[str, 
 
     for name, k in multi_same_type:
         reasons.append(f"multiple_objects_same_type: {name}({k})")
-    
-    # Step 12 补充
+
     multi_object_groups = {name: k for name, k in multi_same_type}
 
-    # 3) 轻量判断“问题是否更像在指代某个具体对象”
-    #    这是为了减少误报：比如问 "How many cups are there?" 就不该要求澄清哪个杯子
+    # Make judgment on whether the question is referring to a specific object
+    # To reduce mistakes in reply
     asks_count = bool(re.search(r"\bhow many\b|\bnumber of\b|\bcount\b", q))
     asks_list_all = bool(re.search(r"\bwhat objects\b|\bwhat is in\b|\blist\b|\ball objects\b", q))
     has_referential_hint = _has_any_pattern(q, REFERENTIAL_HINTS)
 
-    # 核心决策逻辑（保守、稳）
-    # - 如果是计数问题或列举全体问题：通常不算“需要澄清的歧义”
-    # - 否则：只要出现 pronoun 或者多同类对象，就算 ambiguous
     is_ambiguous = False
     if not asks_count and not asks_list_all:
         if has_pronoun or len(multi_same_type) > 0:
             is_ambiguous = True
 
-    # 4) 生成澄清问题 + 候选项
+    # Generate candidate questions
     if is_ambiguous:
-        # 优先：如果存在多同类对象，就对“最多的那一类”发问
+        # If multiple groups exist, pick the largest one
         if len(multi_same_type) > 0:
-            # pick the largest group
             target_name, _ = sorted(multi_same_type, key=lambda x: x[1], reverse=True)[0]
             target_objs = groups.get(target_name, [])
             options = [_summarize_obj(o, i + 1) for i, o in enumerate(target_objs)]
             clarifying_question = f"I see multiple {target_name}s. Which one do you mean?"
         else:
-            # 只有 pronoun 但没有明显多同类对象
-            # 给一个泛化澄清
+            # Only pronouns without a multi-object class
+            # -> Return a generalized clarifying question
             options = [_summarize_obj(o, i + 1) for i, o in enumerate(objects[:6])]
             clarifying_question = "Which object are you referring to?"
 
-        # 如果问题本身有 referential hints（比如 left/right/next to），也保留 ambiguity 标记
-        # 但不在 Phase 1 深挖解析（Phase 2/3 再做）
+        # Preserve ambiguity even if the question already contains referential hints
+        # But not explore in the first round (in the following rounds instead)
         if has_referential_hint:
             reasons.append("referential_hint_present")
 
