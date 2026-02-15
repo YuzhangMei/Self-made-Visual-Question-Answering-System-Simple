@@ -12,22 +12,22 @@ function App() {
   const [followupText, setFollowupText] = useState("");
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
-
+  // Save the instance of SpeechRecognition
   const recognitionRef = useRef(null);
 
-  // ==========================
-  // 🔊 Text-to-Speech
-  // ==========================
+  // Text to Speech
   function speak(text) {
     if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-
+    window.speechSynthesis.cancel(); // Avoid superposed playing
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
     utterance.rate = 1;
     window.speechSynthesis.speak(utterance);
   }
 
+  // Automatically read the result 
+  // and the clarification question
+  // once it is generated
   useEffect(() => {
     if (result) {
       speak(result);
@@ -40,9 +40,7 @@ function App() {
     }
   }, [clarification]);
 
-  // ==========================
-  // 🎙 Speech-to-Text
-  // ==========================
+  // Speech to Text
   function startListening(targetSetter) {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -69,9 +67,7 @@ function App() {
     recognitionRef.current = recognition;
   }
 
-  // ==========================
-  // Submit
-  // ==========================
+  // First-round Submission
   async function handleSubmit(e) {
     e.preventDefault();
 
@@ -100,6 +96,7 @@ function App() {
     }
   }
 
+  // Second-round Clarify Selection
   async function handleClarifySelection(option) {
     const res = await fetch("http://localhost:5000/clarify", {
       method: "POST",
@@ -116,6 +113,7 @@ function App() {
     setFocusReady(data.focus_ready);
   }
 
+  // Third round and later: Follow-up Question
   async function handleFollowup() {
     if (!followupText.trim()) return;
 
@@ -133,6 +131,7 @@ function App() {
     setFollowupText("");
   }
 
+  // Finish conversation
   async function handleEndSession() {
     await fetch("http://localhost:5000/end_session", {
       method: "POST",
@@ -148,7 +147,7 @@ function App() {
 
   return (
     <div className="app-container">
-      <h1 className="app-title">Multi-turn Ambiguity-Aware VQA</h1>
+      <h1 className="app-title">Clarivision</h1>
       <div className="input-group">
         <form onSubmit={handleSubmit}>
           <input
@@ -167,7 +166,7 @@ function App() {
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask a question"
+            placeholder="Please ask a question."
             style={{ width: "80%" }}
           />
 

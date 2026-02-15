@@ -1,4 +1,3 @@
-/* ====== 全局重置 ====== */
 * {
     box-sizing: border-box;
 }
@@ -10,7 +9,7 @@ body {
     color: #1f2937;
 }
 
-/* ====== 容器 ====== */
+
 .app-container {
     max-width: 900px;
     margin: 60px auto;
@@ -20,7 +19,7 @@ body {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
 }
 
-/* ====== 标题 ====== */
+
 .app-title {
     font-size: 2.2rem;
     font-weight: 600;
@@ -28,7 +27,7 @@ body {
     text-align: center;
 }
 
-/* ====== 输入区 ====== */
+
 .input-group {
     margin-bottom: 20px;
 }
@@ -48,7 +47,7 @@ input[type="text"]:focus {
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* ====== 按钮 ====== */
+
 button {
     padding: 10px 16px;
     border-radius: 10px;
@@ -77,7 +76,7 @@ button.secondary:hover {
     background: #d1d5db;
 }
 
-/* ====== Clarification 卡片 ====== */
+
 .clarify-box {
     margin-top: 30px;
     padding: 20px;
@@ -99,7 +98,7 @@ button.secondary:hover {
     background: #f3f4f6;
 }
 
-/* ====== Answer 区 ====== */
+
 .answer-box {
     margin-top: 30px;
     padding: 20px;
@@ -108,7 +107,7 @@ button.secondary:hover {
     border: 1px solid #bfdbfe;
 }
 
-/* ====== Followup ====== */
+
 .followup-box {
     margin-top: 30px;
     padding: 20px;
@@ -117,7 +116,7 @@ button.secondary:hover {
     border: 1px solid #e5e7eb;
 }
 
-/* ====== End Session ====== */
+
 .end-session {
     margin-top: 30px;
     text-align: right;
