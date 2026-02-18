@@ -17,8 +17,6 @@ Unlike traditional one-pass VQA systems, Clarivision:
 - Provides voice input (Speech-to-Text) and voice output (Text-to-Speech)  
 - Includes screen-reader-friendly UI elements  
 
-This project was developed as part of the Human-AI Lab SURE Starter Task (Project #11).
-
 ---
 
 ## Features
@@ -186,11 +184,3 @@ For video inputs:
 - Object tracking instead of frame-based aggregation
 - Improved semantic merging of similar object labels
 - Persistent session storage
-
-## License
-This project is for academic research purposes.
-
-## Acknowledgements
-Developed for the Human-AI Lab SURE Starter Task.
-
-Special thanks to the lab mentors (Prof. Anhong Guo and Rosiana Natalie) for their guidance.
